@@ -124,6 +124,8 @@ func ExecuteCrawler(r *Request, trackingNoList []string, lan, postcode, dest, da
 			}
 			events = append(events, &event)
 		}
+
+		trackingItem.Events = events
 	}
 
 	return result
