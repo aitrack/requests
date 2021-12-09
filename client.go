@@ -1,0 +1,383 @@
+package requests
+
+import (
+	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"net/http/cookiejar"
+	"net/url"
+	"strings"
+	"time"
+)
+
+var (
+	enableLog bool = false
+)
+
+func EnableLog() {
+	enableLog = true
+}
+
+type Response struct {
+	headers map[string]string
+	cookies map[string]string
+	raw     []byte
+}
+
+type parseError struct {
+	TargetFmt string // 期望的目标格式。
+	Err       error  // 源错误。
+	Raw       string // 源内容。
+}
+
+func (e *parseError) Error() string {
+	return fmt.Sprintf("cannot parse as %s, cause=%v, raw=%v", e.TargetFmt, e.Err, e.Raw)
+}
+
+func (rr *Response) AsJson() map[string]interface{} {
+	result := make(map[string]interface{})
+	if err := json.Unmarshal(rr.raw, &result); err != nil {
+		panic(&parseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
+	} else {
+		return result
+	}
+}
+
+func (rr *Response) AsJsonArray() []map[string]interface{} {
+	result := make([]map[string]interface{}, 0)
+	if err := json.Unmarshal(rr.raw, &result); err != nil {
+		panic(&parseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
+	} else {
+		return result
+	}
+}
+
+func (rr *Response) AsString() string {
+	return string(rr.raw)
+}
+
+// Header 获取逗号分隔的Header头信息。
+// name HTTP Header 的名字。
+// 返回头信息，如果不存在则返回空字符串，**如果存在多个则返回最后一个**。
+func (rr *Response) Cookie(name string) string {
+	return rr.cookies[name]
+}
+
+// Header 获取逗号分隔的Header头信息。
+// name HTTP Header 的名字。
+// 返回头信息，如果不存在则返回空字符串，如果存在多个则用逗号分隔。
+func (rr *Response) Header(name string) string {
+	return rr.headers[name]
+}
+
+var ignoreCertTrasport = &http.Transport{
+	Proxy: http.ProxyFromEnvironment,
+	DialContext: (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+	ForceAttemptHTTP2:     true,
+	MaxIdleConns:          100,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+	TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+}
+
+type Request struct {
+	c *http.Client
+
+	timeout      int               // 超时时间。
+	accept       string            // 允许服务器返回的内容类型。
+	flagCache    bool              // 是否允许服务器发送缓存
+	flagReferrer bool              // 是否自动将前一个返回HTML的请求页面作为referer。
+	headers      map[string]string // HTTP头部信息。
+	cookies      map[string]string // Cookie信息。
+
+	preHtmlUrl string
+}
+
+func NewRequest() *Request {
+	jar, _ := cookiejar.New(nil)
+	result := Request{c: &http.Client{Transport: ignoreCertTrasport, Jar: jar}}
+	result.reset()
+
+	return &result
+}
+
+func (r *Request) reset() *Request {
+	r.timeout = 15
+	r.flagReferrer = true
+	r.flagCache = false
+	r.AcceptHTML()
+	r.headers = nil
+	r.cookies = nil
+
+	return r
+}
+
+func (r *Request) Timeout(v int) *Request {
+	r.timeout = v
+	return r
+}
+
+func (r *Request) AcceptHTML() *Request {
+	r.accept = "text/html,application/xhtml+xml,application/xml;q=0.9"
+	return r
+}
+
+func (r *Request) AcceptJSON() *Request {
+	r.accept = "application/json"
+	return r
+}
+
+func (r *Request) EnableCache() *Request {
+	r.flagCache = true
+	return r
+}
+
+func (r *Request) NoReferrer() *Request {
+	r.flagReferrer = false
+	return r
+}
+
+func (r *Request) Header(name, value string) *Request {
+	name = strings.TrimSpace(name)
+	if name != "" {
+		if r.headers == nil {
+			r.headers = make(map[string]string)
+		}
+
+		r.headers[name] = value
+	}
+
+	return r
+}
+
+func (r *Request) Cookie(name, value string) *Request {
+	name = strings.TrimSpace(name)
+	if name != "" {
+		if r.cookies == nil {
+			r.cookies = make(map[string]string)
+		}
+
+		r.cookies[name] = value
+	}
+
+	return r
+}
+
+func (r *Request) Get(url string, params map[string]string) (*Response, error) {
+	return r.exec("GET", url, params, "")
+}
+
+func (r *Request) Post(url string, params map[string]string, data_ map[string]string) (*Response, error) {
+	r.Header("content-type", "appliation/x-www-form-urlencoded")
+	return r.exec("POST", url, params, makeUrlEncoded(data_))
+}
+
+func (r *Request) PostJson(url string, params map[string]string, data_ map[string]string) (*Response, error) {
+	r.Header("content-type", "application/json")
+	return r.exec("POST", url, params, makeJson(data_))
+}
+
+func (r *Request) Put(url string, params map[string]string, data_ map[string]string) (*Response, error) {
+	return r.exec("POST", url, params, makeUrlEncoded(data_))
+}
+
+func (r *Request) PutJson(url string, params map[string]string, data_ map[string]string) (*Response, error) {
+	return r.exec("POST", url, params, makeJson(data_))
+}
+
+func makeUrlEncoded(data_ map[string]string) string {
+	if len(data_) == 0 {
+		return ""
+	}
+
+	rv := url.Values{}
+
+	for k, v := range data_ {
+		rv.Add(k, v)
+	}
+
+	return rv.Encode()
+}
+
+func makeJson(data_ map[string]string) string {
+	if b, err := json.Marshal(data_); err != nil {
+		return ""
+	} else {
+		return string(b)
+	}
+}
+
+type requestError struct {
+	Op         string // HTTP 方法。
+	URL        string // 目标URL。
+	Raw        []byte // 原始响应内容。
+	Err        error  // 关联的错误对象。
+	StatusCode int    // 原始响应码。
+}
+
+func (e *requestError) Error() string {
+	var result string
+	if e.StatusCode > 0 {
+		result = fmt.Sprintf("%s %s (%d)", e.Op, e.URL, e.StatusCode)
+	} else {
+		result = fmt.Sprintf("%s %s (Timeout)", e.Op, e.URL)
+	}
+	if e.Err != nil {
+		result = result + ", cause=" + e.Err.Error()
+	}
+	return result
+}
+
+func (e *requestError) Timeout() bool {
+	return e.StatusCode == 0
+}
+
+func (e *requestError) CannotConn() bool {
+	return e.StatusCode < 0
+}
+
+func (r *Request) exec(method_, url_ string, params_ map[string]string, data_ string) (*Response, error) {
+	defer r.reset()
+
+	method_ = strings.ToUpper(method_)
+
+	rawReq := http.Request{Method: method_, Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1}
+
+	if u, err := url.Parse(url_); err != nil {
+		return nil, err
+	} else {
+		rawReq.Method = method_
+
+		if len(params_) != 0 {
+			q := u.Query()
+			for k, v := range params_ {
+				q.Add(k, v)
+			}
+			u.RawQuery = q.Encode()
+		}
+		rawReq.URL = u
+		rawReq.Host = u.Host
+
+		header := http.Header{}
+		// 加入默认头部。
+		header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Safari/537.36")
+		if !r.flagCache {
+			header.Set("pragma", "no-cache")
+			header.Set("cache-control", "no-cache")
+		}
+		header.Set("accept", r.accept)
+		if r.flagReferrer && r.preHtmlUrl != "" {
+			header.Set("referer", r.preHtmlUrl)
+		}
+		if len(r.headers) > 0 {
+			for headerName, headerValue := range r.headers {
+				header.Add(headerName, headerValue)
+			}
+		}
+		rawReq.Header = header
+
+		// 加入Cookie。
+		if len(r.cookies) > 0 {
+			for cookieName, cookieValue := range r.cookies {
+				rawReq.AddCookie(&http.Cookie{Name: cookieName, Value: cookieValue})
+			}
+		}
+
+		if (method_ == "POST" || method_ == "PUT") && len(data_) > 0 {
+			rawReq.Body = io.NopCloser(strings.NewReader(data_))
+		}
+
+		r.c.Timeout = time.Duration(r.timeout) * time.Second
+
+		if enableLog {
+			ls := make([]string, 0)
+
+			ls = append(ls, fmt.Sprintf("%s %s HTTP1.1", rawReq.Method, rawReq.URL))
+			for hn, hv := range rawReq.Header {
+				for _, hv0 := range hv {
+					ls = append(ls, fmt.Sprintf(">> %s: %s", hn, hv0))
+				}
+			}
+			if rawReq.Body != nil {
+				ls = append(ls, "")
+				if len(data_) > 32 {
+					ls = append(ls, fmt.Sprintf(">> (%d bytes) %s...", len(data_), data_[0:32]))
+				} else {
+					ls = append(ls, fmt.Sprintf(">> (%d bytes) %s", len(data_), data_))
+				}
+			}
+
+			fmt.Printf("%s\n", strings.Join(ls, "\n"))
+		}
+
+		t0 := time.Now()
+		if resp, err := r.c.Do(&rawReq); err != nil {
+			ue := err.(*url.Error)
+			var statusCode int
+			if ue.Timeout() {
+				statusCode = 0
+			} else {
+				statusCode = -1
+			}
+			return nil, &requestError{Op: ue.Op, URL: ue.URL, Err: ue.Err, StatusCode: statusCode}
+		} else {
+			t1 := time.Now()
+			defer resp.Body.Close()
+
+			if enableLog {
+				ls := make([]string, 0)
+
+				ls = append(ls, fmt.Sprintf("%.3f seconds", t1.Sub(t0).Seconds()))
+				ls = append(ls, fmt.Sprintf("<< %s", resp.Status))
+				for hn, hv := range resp.Header {
+					for _, hv0 := range hv {
+						ls = append(ls, fmt.Sprintf("<< %s: %s", hn, hv0))
+					}
+				}
+				if resp.Body != nil {
+					ls = append(ls, "")
+					ls = append(ls, "<< (data)")
+				}
+
+				fmt.Printf("%s\n", strings.Join(ls, "\n"))
+			}
+
+			// 如果服务器响应了一个HTML页面，那么将请求地址记录到之前的HTML地址。
+			if resp.StatusCode == http.StatusOK && strings.HasPrefix(resp.Header.Get("content-type"), "text/html") {
+				r.preHtmlUrl = u.String()
+			}
+
+			// TODO: 此处按照HTTP头部获取charset。
+			if rawData, err := ioutil.ReadAll(resp.Body); err != nil {
+				return nil, &requestError{Op: method_, URL: u.String(), Err: err, StatusCode: resp.StatusCode}
+			} else {
+				if resp.StatusCode >= 300 {
+					return nil, &requestError{Op: method_, URL: u.String(), Raw: rawData, StatusCode: resp.StatusCode}
+				}
+
+				respHeaders := make(map[string]string)
+				respCookies := make(map[string]string)
+
+				for rHeaderName, rHeaderValues := range resp.Header {
+					if len(rHeaderValues) > 0 {
+						respHeaders[rHeaderName] = strings.Join(rHeaderValues, ",")
+					}
+				}
+
+				for _, rcookie := range resp.Cookies() {
+					respCookies[rcookie.Name] = rcookie.Value
+				}
+
+				return &Response{headers: respHeaders, cookies: respCookies, raw: rawData}, nil
+			}
+		}
+	}
+}
