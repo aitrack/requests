@@ -97,6 +97,8 @@ func RegisterAgent(carrierCode string, agent *Agent) {
 
 // 启动查询。
 func Run(w http.ResponseWriter, r *http.Request) {
+	defer recover500(w)
+
 	if enableLog {
 		fmt.Printf("Entry: %s %s\n", r.Method, r.URL)
 	}
@@ -235,5 +237,13 @@ func Run(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-length", fmt.Sprintf("%d", len(content)))
 		w.WriteHeader(200)
 		w.Write(content)
+	}
+}
+
+func recover500(w http.ResponseWriter) {
+	if err := recover(); err != nil {
+		w.Header().Set("content-type", "application/json")
+		w.WriteHeader(500)
+		w.Write([]byte(fmt.Sprintf("%v\n%s", err, debug.Stack())))
 	}
 }
