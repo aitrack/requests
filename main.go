@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,12 +29,15 @@ type response struct {
 }
 
 type TrackingItem struct {
-	ReturnValue string           `json:"returnValue"`
-	CMess       string           `json:"cMess"`
-	TrackingNo  string           `json:"trackingNo"`
-	Code        int              `json:"code"`
-	CodeMg      string           `json:"codeMg"`
-	Events      []*TrackingEvent `json:"trackingEventList"`
+	CMess      string           `json:"cMess"`
+	TrackingNo string           `json:"trackingNo"`
+	Code       int              `json:"code"`
+	CodeMg     string           `json:"codeMg"`
+	Events     []*TrackingEvent `json:"trackingEventList"`
+}
+
+func (t *TrackingItem) String() string {
+	return fmt.Sprintf("tracking-item{code: %d, code-mg: %#v, c-mess: %#v, tracking-no: %#v, events: %v}", t.Code, t.CodeMg, t.CMess, t.TrackingNo, t.Events)
 }
 
 type TrackingEvent struct {
@@ -44,17 +46,20 @@ type TrackingEvent struct {
 	Details string `json:"details"`
 }
 
+func (t *TrackingEvent) String() string {
+	return fmt.Sprintf("event{date: %s, place: %#v, details: %#v}", t.Date, t.Place, t.Details)
+}
+
 var (
 	agents = make(map[string]*Agent)
 )
 
 func NewTrackingItem(trackingNo string) *TrackingItem {
 	result := TrackingItem{
-		ReturnValue: "1",
-		CMess:       "success",
-		TrackingNo:  trackingNo,
-		Code:        1,
-		CodeMg:      "",
+		CMess:      "success",
+		TrackingNo: trackingNo,
+		Code:       1,
+		CodeMg:     "",
 	}
 
 	return &result
@@ -69,52 +74,6 @@ func RegisterAgent(carrierCode string, agent *Agent) {
 	}
 	carrierCode = strings.TrimSpace(strings.ToLower(carrierCode))
 	agents[carrierCode] = agent
-}
-
-func GetMapString(m map[string]interface{}, key string) string {
-	s := m[key]
-	if s == nil {
-		return ""
-	} else {
-		return fmt.Sprintf("%s", s)
-	}
-}
-
-func GetMapInt64(m map[string]interface{}, key string) int64 {
-	s := m[key]
-	if s == nil {
-		return 0
-	} else {
-		if r, err := strconv.ParseInt(fmt.Sprintf("%s", s), 10, 64); err != nil {
-			return 0
-		} else {
-			return r
-		}
-	}
-}
-
-func ParseDateTime(s string) time.Time {
-	s = strings.TrimSpace(s)
-	if r, err := time.Parse("2006-01-02T15:04:05-07:00", s); err != nil {
-		return r.UTC()
-	} else {
-		return time.Time{}
-	}
-}
-
-func MakeBatchFatalTrackingItem(trackignNoList []string, code int, message, raw string) []*TrackingItem {
-	result := make([]*TrackingItem, 0)
-
-	for _, trackingNo := range trackignNoList {
-		item := NewTrackingItem(trackingNo)
-		item.Code = code
-		item.CodeMg = message
-		item.CMess = raw
-
-		result = append(result, item)
-	}
-
-	return result
 }
 
 // 有返回，数据空
@@ -140,6 +99,10 @@ func MakeBatchFatalTrackingItem(trackignNoList []string, code int, message, raw 
 
 // 启动查询。
 func Run(w http.ResponseWriter, r *http.Request) {
+	if enableLog {
+		fmt.Printf("Entry: %s %s\n", r.Method, r.URL)
+	}
+
 	carrierCode := strings.TrimSpace(r.FormValue("carriercode"))
 	nums := strings.TrimSpace(r.FormValue("nums"))
 	lan := strings.TrimSpace(r.FormValue("lan"))
@@ -166,7 +129,6 @@ func Run(w http.ResponseWriter, r *http.Request) {
 		if agent == nil {
 			panic(fmt.Errorf("unknown carriercode: %s", carrierCode))
 		}
-
 	}
 
 	if agent.MaxOrdersPerPage == 0 {
@@ -190,7 +152,7 @@ func Run(w http.ResponseWriter, r *http.Request) {
 	wg := sync.WaitGroup{}
 	wg.Add(parallel)
 
-	executeAgent := func(trackigNoList []string, trackingItemList []*TrackingItem) {
+	executeAgent := func(trackigNoList []string, trackingItemList *[]*TrackingItem) {
 		defer func() {
 			err := recover()
 			if err != nil {
@@ -222,7 +184,7 @@ func Run(w http.ResponseWriter, r *http.Request) {
 				}
 
 				for _, trackingNo := range trackigNoList {
-					trackingItemList = append(trackingItemList, &TrackingItem{
+					*trackingItemList = append(*trackingItemList, &TrackingItem{
 						Code:       errCode,
 						CodeMg:     errMessage,
 						TrackingNo: trackingNo,
@@ -235,14 +197,11 @@ func Run(w http.ResponseWriter, r *http.Request) {
 		req := NewRequest()
 
 		result := agent.Execute(req, trackingNoList, lan, postcode, dest, date)
-		trackingItemList = append(trackingItemList, result...)
+		*trackingItemList = append(*trackingItemList, result...)
 	}
 
 	for i := 0; i < parallel; i++ {
 		go func() {
-			resultLocker.Lock()
-			defer resultLocker.Unlock()
-
 			// 默认客户端，要求服务器不缓存内容，自动携带上一个页面作为Referer，请求数据的超时时间15秒，要求服务器返回HTML页面。
 			req := &Request{flagCache: false, flagReferrer: true}
 			req.reset()
@@ -253,7 +212,12 @@ func Run(w http.ResponseWriter, r *http.Request) {
 				p1 = len(trackingNoList)
 			}
 
-			executeAgent(trackingNoList[p0:p1], result)
+			br := make([]*TrackingItem, 0)
+			executeAgent(trackingNoList[p0:p1], &br)
+
+			resultLocker.Lock()
+			defer resultLocker.Unlock()
+			result = append(result, br...)
 
 			wg.Done()
 		}()
