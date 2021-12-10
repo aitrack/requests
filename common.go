@@ -1,6 +1,8 @@
 package requests
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -126,4 +128,10 @@ func FillEmptyClock(t *time.Time, sHour, sMin, sSec *int) {
 
 		*t = time.Date(year, month, day, *sHour, *sMin, *sSec, 0, t.Location())
 	}
+}
+
+func VerifyWithMd5(sign string, args ...string) bool {
+	plainText := strings.Join(args, "")
+	md5Bytes := md5.Sum([]byte(plainText))
+	return hex.EncodeToString(md5Bytes[:]) == sign
 }

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/aitrack/utils"
 )
 
 const (
@@ -112,7 +110,7 @@ func Run(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSpace(r.FormValue("token"))
 
 	mtext := carrierCode + nums + lan + postcode + dest + date + securityText
-	utils.VerifyWithMd5(mtext, token)
+	VerifyWithMd5(mtext, token)
 
 	trackingNoList := strings.Split(nums, ",")
 	for i := range trackingNoList {
