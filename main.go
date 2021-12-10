@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -109,10 +110,20 @@ func Run(w http.ResponseWriter, r *http.Request) {
 	postcode := strings.TrimSpace(r.FormValue("postcode"))
 	dest := strings.TrimSpace(r.FormValue("dest"))
 	date := strings.TrimSpace(r.FormValue("date"))
+	timestamp := strings.TrimSpace(r.FormValue("timestamp"))
 	token := strings.TrimSpace(r.FormValue("token"))
 
-	mtext := carrierCode + nums + lan + postcode + dest + date + securityText
-	VerifyWithMd5(mtext, token)
+	if timestamp != "" {
+		timestamp_, _ := strconv.ParseInt(timestamp, 10, 64)
+		stt := time.Unix(timestamp_, 0)
+		if int64(time.Since(stt).Minutes()) > 5 {
+			// 时间戳已过期，可能是伪造的。
+			panic(fmt.Errorf("illegal timestamp"))
+		}
+		if !VerifyWithMd5(token, carrierCode, nums, lan, postcode, dest, date, timestamp, securityText) {
+			panic(fmt.Errorf("illegal token"))
+		}
+	}
 
 	trackingNoList := strings.Split(nums, ",")
 	for i := range trackingNoList {
