@@ -181,7 +181,7 @@ func (r *Request) Get(url string, params map[string]string) (*Response, error) {
 }
 
 func (r *Request) Post(url string, params map[string]string, data_ map[string]string) (*Response, error) {
-	r.Header("content-type", "appliation/x-www-form-urlencoded")
+	r.Header("content-type", "application/x-www-form-urlencoded")
 	return r.exec("POST", url, params, makeUrlEncoded(data_))
 }
 
