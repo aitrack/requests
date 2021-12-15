@@ -135,6 +135,11 @@ func (r *Request) AcceptJSON() *Request {
 	return r
 }
 
+func (r *Request) AcceptAny() *Request {
+	r.accept = "*/*"
+	return r
+}
+
 func (r *Request) EnableCache() *Request {
 	r.flagCache = true
 	return r
@@ -279,7 +284,7 @@ func (r *Request) exec(method_, url_ string, params_ map[string]string, data_ st
 		}
 		if len(r.headers) > 0 {
 			for headerName, headerValue := range r.headers {
-				header.Add(headerName, headerValue)
+				header.Set(headerName, headerValue)
 			}
 		}
 		rawReq.Header = header
@@ -308,8 +313,8 @@ func (r *Request) exec(method_, url_ string, params_ map[string]string, data_ st
 			}
 			if rawReq.Body != nil {
 				ls = append(ls, "")
-				if len(data_) > 32 {
-					ls = append(ls, fmt.Sprintf(">> (%d bytes) %s...", len(data_), data_[0:32]))
+				if len(data_) > 512 {
+					ls = append(ls, fmt.Sprintf(">> (%d bytes) %s...", len(data_), data_[0:512]))
 				} else {
 					ls = append(ls, fmt.Sprintf(">> (%d bytes) %s", len(data_), data_))
 				}
