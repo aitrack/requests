@@ -60,6 +60,10 @@ func (rr *Response) AsString() string {
 	return string(rr.raw)
 }
 
+func (rr *Response) Raw() []byte {
+	return rr.raw
+}
+
 // Header 获取逗号分隔的Header头信息。
 // name HTTP Header 的名字。
 // 返回头信息，如果不存在则返回空字符串，**如果存在多个则返回最后一个**。
