@@ -189,7 +189,7 @@ func (r *Request) Post(url string, params map[string]string, data_ map[string]st
 	return r.exec("POST", url, params, makeUrlEncoded(data_))
 }
 
-func (r *Request) PostJson(url string, params map[string]string, data_ map[string]string) (*Response, error) {
+func (r *Request) PostJson(url string, params map[string]string, data_ interface{}) (*Response, error) {
 	r.Header("content-type", "application/json")
 	return r.exec("POST", url, params, makeJson(data_))
 }
@@ -216,8 +216,10 @@ func makeUrlEncoded(data_ map[string]string) string {
 	return rv.Encode()
 }
 
-func makeJson(data_ map[string]string) string {
-	if b, err := json.Marshal(data_); err != nil {
+func makeJson(data_ interface{}) string {
+	if rs, ok := data_.(string); ok {
+		return rs
+	} else if b, err := json.Marshal(data_); err != nil {
 		return ""
 	} else {
 		return string(b)
