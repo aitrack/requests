@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -73,6 +74,14 @@ func ReduceWhitespaces(s string) string {
 
 func TrimSpace(s string) string {
 	return strings.TrimSpace(ReduceWhitespaces(s))
+}
+
+func Reverse(s interface{}) {
+	n := reflect.ValueOf(s).Len()
+	swap := reflect.Swapper(s)
+	for i, j := 0, n-1; i < j; i, j = i+1, j-1 {
+		swap(i, j)
+	}
 }
 
 func MatchOddityCode(value, pattern string) bool {
