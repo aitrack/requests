@@ -118,42 +118,44 @@ func MakeBatchFatalTrackingItem(trackignNoList []string, code int, message, raw 
 	return result
 }
 
+// // FillEmptyClock 填充空白的时间部分。
+// func FillEmptyClock(t *time.Time, sHour, sMin, sSec *int, step int) {
+// 	year, month, day := t.Date()
+// 	hour, min, sec := t.Clock()
+
+// 	if hour == 0 && min == 0 && sec == 0 {
+// 		// 缺失时间部分，需要补充。
+
+// 		*sSec += step
+// 		if *sSec > 59 {
+// 			*sSec = 0
+// 			*sMin++
+// 		}
+// 		if *sMin > 59 {
+// 			*sMin = 0
+// 			*sHour++
+// 		}
+// 		if *sHour > 23 {
+// 			*sHour = 0
+// 		}
+
+// 		*t = time.Date(year, month, day, *sHour, *sMin, *sSec, 0, t.Location())
+// 	}
+// }
+
 // FillEmptyClock 填充空白的时间部分。
-func FillEmptyClock(t *time.Time, sHour, sMin, sSec *int) {
-	year, month, day := t.Date()
-	hour, min, sec := t.Clock()
-
-	if hour == 0 && min == 0 && sec == 0 {
-		// 缺失时间部分，需要补充。
-
-		*sSec++
-		if *sSec > 59 {
-			*sSec = 0
-			*sMin++
-		}
-		if *sMin > 59 {
-			*sMin = 0
-			*sHour++
-		}
-		if *sHour > 23 {
-			*sHour = 0
-		}
-
-		*t = time.Date(year, month, day, *sHour, *sMin, *sSec, 0, t.Location())
-	}
-}
-
-// FillEmptyClock 填充空白的时间部分。
-func FillEmptySecond(t *time.Time, sSec *int) {
+func FillEmptySecond(t *time.Time, sSec *int, step int) {
 	year, month, day := t.Date()
 	hour, min, sec := t.Clock()
 
 	if sec == 0 {
 		// 缺失时间部分，需要补充。
 
-		*sSec++
+		*sSec += step
 		if *sSec > 59 {
 			*sSec = 0
+		} else if *sSec < 0 {
+			*sSec = 59
 		}
 
 		*t = time.Date(year, month, day, hour, min, *sSec, 0, t.Location())

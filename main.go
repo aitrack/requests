@@ -55,7 +55,7 @@ var (
 
 func NewTrackingItem(trackingNo string) *TrackingItem {
 	result := TrackingItem{
-		CMess:      "success",
+		CMess:      "",
 		TrackingNo: trackingNo,
 		Code:       1,
 		CodeMg:     "",
