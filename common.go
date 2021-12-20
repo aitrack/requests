@@ -72,10 +72,16 @@ func ReduceWhitespaces(s string) string {
 	return string(buf)
 }
 
+// TrimSpace 清除所有字符串。
+// 删除开头和结尾的所有空格。中间的所有连续空格减少到只有一个空格。
+// s 原始字符串。
+// 返回缩减后的字符串。
 func TrimSpace(s string) string {
 	return strings.TrimSpace(ReduceWhitespaces(s))
 }
 
+// Reverse 将列表反序。直接在原列表上反序。
+// s 原始列表。
 func Reverse(s interface{}) {
 	n := reflect.ValueOf(s).Len()
 	swap := reflect.Swapper(s)

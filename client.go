@@ -1,6 +1,7 @@
 package requests
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/antchfx/htmlquery"
+	"golang.org/x/net/html"
 )
 
 var (
@@ -38,6 +42,9 @@ func (e *parseError) Error() string {
 	return fmt.Sprintf("cannot parse as %s, cause=%v, raw=%v", e.TargetFmt, e.Err, e.Raw)
 }
 
+// AsJson 将结果解析为JSON对象。
+// 如果解析失败则触发`panic`。
+// 返回JSON对象。
 func (rr *Response) AsJson() map[string]interface{} {
 	result := make(map[string]interface{})
 	if err := json.Unmarshal(rr.raw, &result); err != nil {
@@ -47,6 +54,18 @@ func (rr *Response) AsJson() map[string]interface{} {
 	}
 }
 
+// Scan 将结果解析为JSON对象。
+// 如果解析失败则触发`panic`。
+// result 待解析的结果。
+func (rr *Response) Scan(result interface{}) {
+	if err := json.Unmarshal(rr.raw, result); err != nil {
+		panic(&parseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
+	}
+}
+
+// AsJsonArray 将结果解析为列表形式的JSON对象。
+// 如果解析失败则触发`panic`。
+// 返回列表形式的对象。
 func (rr *Response) AsJsonArray() []map[string]interface{} {
 	result := make([]map[string]interface{}, 0)
 	if err := json.Unmarshal(rr.raw, &result); err != nil {
@@ -56,10 +75,31 @@ func (rr *Response) AsJsonArray() []map[string]interface{} {
 	}
 }
 
+// AsString 将结果解析为字符串。
+// 使用UTF8将返回结果解码为字符串。
+// 返回解码后的结果
 func (rr *Response) AsString() string {
 	return string(rr.raw)
 }
 
+// AsHtml 将结果解析为HTML节点对象。
+// path 表示节点对象的XPath。
+// 如果结果无法被解析为HTML，那么触发`panic`。如果可以正常解析但是找不到指定的path，那么返回`nil`。
+// 如果参数`path`不合法，也触发`panic`。
+// 返回path指定的节点对象，如果path是空字符串，那么返回`document`节点对象。
+func (rr *Response) AsHtml(path string) *html.Node {
+	if doc, err := htmlquery.Parse(bytes.NewBuffer(rr.raw)); err != nil {
+		panic(&parseError{TargetFmt: "html", Err: err, Raw: string(rr.raw)})
+	} else {
+		if path == "" {
+			return doc
+		} else {
+			return htmlquery.FindOne(doc, path)
+		}
+	}
+}
+
+// Raw 返回原始响应。
 func (rr *Response) Raw() []byte {
 	return rr.raw
 }
