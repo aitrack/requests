@@ -172,47 +172,6 @@ func Run(w http.ResponseWriter, r *http.Request) {
 	wg.Add(parallel)
 
 	executeAgent := func(trackigNoList []string, trackingItemList *[]*TrackingItem) {
-		defer func() {
-			err := recover()
-			if err != nil {
-				var errCode int
-				var errMessage string
-
-				if re, ok := err.(*requestError); ok {
-					if re.Timeout() {
-						// 超时错误。
-						errCode = 409
-						errMessage = fmt.Sprintf("$超时: %s$", re)
-					} else if re.CannotConn() {
-						// 无法连接。
-						errCode = 408
-						errMessage = fmt.Sprintf("$网站无法访问: %s$", re)
-					} else {
-						// 其它HTTP错误。
-						errCode = 410
-						errMessage = fmt.Sprintf("$其它: %s$", re)
-					}
-				} else if pe, ok := err.(*parseError); ok {
-					// 可以获取结果，但是无法解析到目标格式。
-					errCode = 206
-					errMessage = fmt.Sprintf("$解析错误: %s$", pe)
-				} else {
-					// 不是HTTP错误或者解析错误，可能是其它原因。
-					errCode = 407
-					errMessage = fmt.Sprintf("$未知: %v\n%s$", err, string(debug.Stack()))
-				}
-
-				for _, trackingNo := range trackigNoList {
-					*trackingItemList = append(*trackingItemList, &TrackingItem{
-						Code:       errCode,
-						CodeMg:     errMessage,
-						TrackingNo: trackingNo,
-						Events:     []*TrackingEvent{},
-					})
-				}
-			}
-		}()
-
 		req := NewRequest()
 
 		totalCount := len(trackigNoList)
@@ -221,7 +180,55 @@ func Run(w http.ResponseWriter, r *http.Request) {
 			batchCount++
 		}
 		for j := 0; j < batchCount; j++ {
-			result := agent.Execute(req, trackingNoList, lan, postcode, dest, date)
+			p0 := j * batchCount
+			p1 := p0 + agent.MaxOrdersPerPage
+			if p1 > totalCount {
+				p1 = totalCount
+			}
+			trackingNoSlice := trackigNoList[p0:p1]
+
+			defer func() {
+				err := recover()
+				if err != nil {
+					var errCode int
+					var errMessage string
+
+					if re, ok := err.(*requestError); ok {
+						if re.Timeout() {
+							// 超时错误。
+							errCode = 409
+							errMessage = fmt.Sprintf("$超时: %s$", re)
+						} else if re.CannotConn() {
+							// 无法连接。
+							errCode = 408
+							errMessage = fmt.Sprintf("$网站无法访问: %s$", re)
+						} else {
+							// 其它HTTP错误。
+							errCode = 410
+							errMessage = fmt.Sprintf("$其它: %s$", re)
+						}
+					} else if pe, ok := err.(*parseError); ok {
+						// 可以获取结果，但是无法解析到目标格式。
+						errCode = 206
+						errMessage = fmt.Sprintf("$解析错误: %s$", pe)
+					} else {
+						// 不是HTTP错误或者解析错误，可能是其它原因。
+						errCode = 407
+						errMessage = fmt.Sprintf("$未知: %v\n%s$", err, string(debug.Stack()))
+					}
+
+					for _, trackingNo := range trackingNoSlice {
+						*trackingItemList = append(*trackingItemList, &TrackingItem{
+							Code:       errCode,
+							CodeMg:     errMessage,
+							TrackingNo: trackingNo,
+							Events:     []*TrackingEvent{},
+						})
+					}
+				}
+			}()
+
+			result := agent.Execute(req, trackingNoSlice, lan, postcode, dest, date)
 			*trackingItemList = append(*trackingItemList, result...)
 		}
 	}
