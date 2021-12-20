@@ -30,6 +30,7 @@ type Response struct {
 	headers map[string]string
 	cookies map[string]string
 	raw     []byte
+	url     *url.URL
 }
 
 type parseError struct {
@@ -102,6 +103,11 @@ func (rr *Response) AsHtml(path string) *html.Node {
 // Raw 返回原始响应。
 func (rr *Response) Raw() []byte {
 	return rr.raw
+}
+
+// URL 返回对应的最后一次请求（多次重定向）的URL。
+func (rr *Response) URL() *url.URL {
+	return rr.url
 }
 
 // Header 获取逗号分隔的Header头信息。
@@ -235,6 +241,7 @@ func (r *Request) PostJson(url string, params map[string]string, data_ interface
 }
 
 func (r *Request) Put(url string, params map[string]string, data_ map[string]string) (*Response, error) {
+	r.Header("content-type", "application/x-www-form-urlencoded")
 	return r.exec("POST", url, params, makeUrlEncoded(data_))
 }
 
@@ -427,7 +434,7 @@ func (r *Request) exec(method_, url_ string, params_ map[string]string, data_ st
 					respCookies[rcookie.Name] = rcookie.Value
 				}
 
-				return &Response{headers: respHeaders, cookies: respCookies, raw: rawData}, nil
+				return &Response{headers: respHeaders, cookies: respCookies, raw: rawData, url: resp.Request.URL}, nil
 			}
 		}
 	}

@@ -16,7 +16,8 @@ const (
 )
 
 type Agent struct {
-	MaxOrdersPerPage int // 每个查询页面可以查询的单号。
+	MaxOrdersPerPage int // 每个查询页面可以查询的单号数量。
+	MaxPagesPerReq   int // 每个请求可以查询的页面数量，即最大循环次数。
 
 	Execute func(r *Request, trackingNoList []string, lan, postcode, dest, date string) []*TrackingItem // 执行查询的入口。
 }
@@ -70,6 +71,12 @@ func NewTrackingItem(trackingNo string) *TrackingItem {
 func RegisterAgent(carrierCode string, agent *Agent) {
 	if agent == nil {
 		panic(fmt.Errorf("illegal nil agent for %s", carrierCode))
+	}
+	if agent.MaxOrdersPerPage < 1 {
+		agent.MaxOrdersPerPage = 1
+	}
+	if agent.MaxPagesPerReq < 1 {
+		agent.MaxPagesPerReq = 3
 	}
 	carrierCode = strings.TrimSpace(strings.ToLower(carrierCode))
 	agents[carrierCode] = agent
@@ -152,8 +159,9 @@ func Run(w http.ResponseWriter, r *http.Request) {
 
 	// 自动开启协程查询。
 
-	parallel := len(trackingNoList) / agent.MaxOrdersPerPage
-	if len(trackingNoList)%agent.MaxOrdersPerPage != 0 {
+	ordersPerReq := agent.MaxOrdersPerPage * agent.MaxPagesPerReq
+	parallel := len(trackingNoList) / ordersPerReq
+	if len(trackingNoList)%ordersPerReq != 0 {
 		parallel++
 	}
 
@@ -207,8 +215,15 @@ func Run(w http.ResponseWriter, r *http.Request) {
 
 		req := NewRequest()
 
-		result := agent.Execute(req, trackingNoList, lan, postcode, dest, date)
-		*trackingItemList = append(*trackingItemList, result...)
+		totalCount := len(trackigNoList)
+		batchCount := totalCount / agent.MaxOrdersPerPage
+		if totalCount%agent.MaxOrdersPerPage != 0 {
+			batchCount++
+		}
+		for j := 0; j < batchCount; j++ {
+			result := agent.Execute(req, trackingNoList, lan, postcode, dest, date)
+			*trackingItemList = append(*trackingItemList, result...)
+		}
 	}
 
 	for i := 0; i < parallel; i++ {
@@ -218,7 +233,7 @@ func Run(w http.ResponseWriter, r *http.Request) {
 			req.reset()
 
 			p0 := i * parallel
-			p1 := p0 + agent.MaxOrdersPerPage
+			p1 := p0 + ordersPerReq
 			if p1 > len(trackingNoList) {
 				p1 = len(trackingNoList)
 			}
