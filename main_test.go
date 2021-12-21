@@ -13,7 +13,7 @@ import (
 )
 
 func init() {
-	RegisterAgent("yamato", &Agent{MaxOrdersPerPage: 2, MaxPagesPerReq: 3, Execute: yamatoHandler})
+	RegisterAgent("yamato", &Agent{MaxOrdersPerPage: 3, Execute: yamatoHandler})
 }
 
 func TestAgent(t *testing.T) {

@@ -17,7 +17,6 @@ const (
 
 type Agent struct {
 	MaxOrdersPerPage int // 每个查询页面可以查询的单号数量。
-	MaxPagesPerReq   int // 每个请求可以查询的页面数量，即最大循环次数。
 
 	Execute func(r *Request, trackingNoList []string, lan, postcode, dest, date string) []*TrackingItem // 执行查询的入口。
 }
@@ -74,9 +73,6 @@ func RegisterAgent(carrierCode string, agent *Agent) {
 	}
 	if agent.MaxOrdersPerPage < 1 {
 		agent.MaxOrdersPerPage = 1
-	}
-	if agent.MaxPagesPerReq < 1 {
-		agent.MaxPagesPerReq = 3
 	}
 	carrierCode = strings.TrimSpace(strings.ToLower(carrierCode))
 	agents[carrierCode] = agent
@@ -159,15 +155,15 @@ func Run(w http.ResponseWriter, r *http.Request) {
 
 	// 自动开启协程查询。
 
-	ordersPerReq := agent.MaxOrdersPerPage * agent.MaxPagesPerReq
-	parallel := len(trackingNoList) / ordersPerReq
-	if len(trackingNoList)%ordersPerReq != 0 {
+	ordersPerPage := agent.MaxOrdersPerPage
+	parallel := len(trackingNoList) / ordersPerPage
+	if len(trackingNoList)%ordersPerPage != 0 {
 		parallel++
 	}
 
-	ordersPerReq = len(trackingNoList) / parallel
+	ordersPerPage = len(trackingNoList) / parallel
 	if len(trackingNoList)%parallel != 0 {
-		ordersPerReq++
+		ordersPerPage++
 	}
 
 	result := make([]*TrackingItem, 0)
@@ -176,67 +172,52 @@ func Run(w http.ResponseWriter, r *http.Request) {
 	wg := sync.WaitGroup{}
 	wg.Add(parallel)
 
-	executeAgent := func(trackigNoList []string, trackingItemList *[]*TrackingItem) {
+	executeAgent := func(trackingNoSubList []string, trackingItemList *[]*TrackingItem) {
 		req := NewRequest()
 
-		totalCount := len(trackigNoList)
-		batchCount := totalCount / agent.MaxOrdersPerPage
-		if totalCount%agent.MaxOrdersPerPage != 0 {
-			batchCount++
-		}
+		defer func() {
+			err := recover()
+			if err != nil {
+				var errCode int
+				var errMessage string
 
-		for j := 0; j < batchCount; j++ {
-			p0 := j * agent.MaxOrdersPerPage
-			p1 := p0 + agent.MaxOrdersPerPage
-			if p1 > totalCount {
-				p1 = totalCount
-			}
-			trackingNoSlice := trackigNoList[p0:p1]
-
-			defer func() {
-				err := recover()
-				if err != nil {
-					var errCode int
-					var errMessage string
-
-					if re, ok := err.(*requestError); ok {
-						if re.Timeout() {
-							// 超时错误。
-							errCode = 409
-							errMessage = fmt.Sprintf("$超时: %s$", re)
-						} else if re.CannotConn() {
-							// 无法连接。
-							errCode = 408
-							errMessage = fmt.Sprintf("$网站无法访问: %s$", re)
-						} else {
-							// 其它HTTP错误。
-							errCode = 410
-							errMessage = fmt.Sprintf("$其它: %s$", re)
-						}
-					} else if pe, ok := err.(*parseError); ok {
-						// 可以获取结果，但是无法解析到目标格式。
-						errCode = 206
-						errMessage = fmt.Sprintf("$解析错误: %s$", pe)
+				if re, ok := err.(*requestError); ok {
+					if re.Timeout() {
+						// 超时错误。
+						errCode = 409
+						errMessage = fmt.Sprintf("$超时: %s$", re)
+					} else if re.CannotConn() {
+						// 无法连接。
+						errCode = 408
+						errMessage = fmt.Sprintf("$网站无法访问: %s$", re)
 					} else {
-						// 不是HTTP错误或者解析错误，可能是其它原因。
-						errCode = 407
-						errMessage = fmt.Sprintf("$未知: %v\n%s$", err, string(debug.Stack()))
+						// 其它HTTP错误。
+						errCode = 410
+						errMessage = fmt.Sprintf("$其它: %s$", re)
 					}
-
-					for _, trackingNo := range trackingNoSlice {
-						*trackingItemList = append(*trackingItemList, &TrackingItem{
-							Code:       errCode,
-							CodeMg:     errMessage,
-							TrackingNo: trackingNo,
-							Events:     []*TrackingEvent{},
-						})
-					}
+				} else if pe, ok := err.(*parseError); ok {
+					// 可以获取结果，但是无法解析到目标格式。
+					errCode = 206
+					errMessage = fmt.Sprintf("$解析错误: %s$", pe)
+				} else {
+					// 不是HTTP错误或者解析错误，可能是其它原因。
+					errCode = 407
+					errMessage = fmt.Sprintf("$未知: %v\n%s$", err, string(debug.Stack()))
 				}
-			}()
 
-			result := agent.Execute(req, trackingNoSlice, lan, postcode, dest, date)
-			*trackingItemList = append(*trackingItemList, result...)
-		}
+				for _, trackingNo := range trackingNoSubList {
+					*trackingItemList = append(*trackingItemList, &TrackingItem{
+						Code:       errCode,
+						CodeMg:     errMessage,
+						TrackingNo: trackingNo,
+						Events:     []*TrackingEvent{},
+					})
+				}
+			}
+		}()
+
+		result := agent.Execute(req, trackingNoSubList, lan, postcode, dest, date)
+		*trackingItemList = append(*trackingItemList, result...)
 	}
 
 	for i := 0; i < parallel; i++ {
@@ -245,8 +226,8 @@ func Run(w http.ResponseWriter, r *http.Request) {
 			req := &Request{flagCache: false, flagReferrer: true}
 			req.reset()
 
-			p0 := i * ordersPerReq
-			p1 := p0 + ordersPerReq
+			p0 := i * ordersPerPage
+			p1 := p0 + ordersPerPage
 			if p1 > len(trackingNoList) {
 				p1 = len(trackingNoList)
 			}
