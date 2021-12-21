@@ -29,7 +29,7 @@ type Response struct {
 	headers map[string]string
 	cookies map[string]string
 	raw     []byte
-	url     *url.URL
+	url     string
 }
 
 type parseError struct {
@@ -105,7 +105,7 @@ func (rr *Response) Raw() []byte {
 }
 
 // URL 返回对应的最后一次请求（多次重定向）的URL。
-func (rr *Response) URL() *url.URL {
+func (rr *Response) URL() string {
 	return rr.url
 }
 
@@ -301,23 +301,83 @@ func (e *requestError) CannotConn() bool {
 	return e.StatusCode < 0
 }
 
-func (r *Request) exec(method_, url_ string, params_ map[string]string, data_ string) (*Response, error) {
+func (r *Request) exec(method, url_ string, params map[string]string, data string) (*Response, error) {
 	defer r.reset()
 
-	method_ = strings.ToUpper(method_)
+	if rawReq, err := r.newRequest(method, url_, params, data); err != nil {
+		return nil, err
+	} else {
+		if enableLog {
+			r.logReq(rawReq, data)
+		}
+
+		t0 := time.Now()
+		if resp, err := r.c.Do(rawReq); err != nil {
+			ue := err.(*url.Error)
+			var statusCode int
+			if ue.Timeout() {
+				statusCode = 0
+			} else {
+				statusCode = -1
+			}
+			return nil, &requestError{Op: ue.Op, URL: ue.URL, Err: ue.Err, StatusCode: statusCode}
+		} else {
+			t1 := time.Now()
+			defer resp.Body.Close()
+
+			if enableLog {
+				r.logResp(t0, t1, resp)
+			}
+
+			requestURI := resp.Request.URL.String()
+
+			// 如果服务器响应了一个HTML页面，那么将请求地址记录到之前的HTML地址。
+			if resp.StatusCode == http.StatusOK && strings.HasPrefix(resp.Header.Get("content-type"), "text/html") {
+				r.preHtmlUrl = requestURI
+			}
+
+			// TODO: 此处按照HTTP头部获取charset。
+			if rawData, err := ioutil.ReadAll(resp.Body); err != nil {
+				return nil, &requestError{Op: method, URL: requestURI, Err: err, StatusCode: resp.StatusCode}
+			} else {
+				if resp.StatusCode >= 300 {
+					return nil, &requestError{Op: method, URL: requestURI, Raw: rawData, StatusCode: resp.StatusCode}
+				}
+
+				respHeaders := make(map[string]string)
+				respCookies := make(map[string]string)
+
+				for rHeaderName, rHeaderValues := range resp.Header {
+					if len(rHeaderValues) > 0 {
+						respHeaders[rHeaderName] = strings.Join(rHeaderValues, ",")
+					}
+				}
+
+				for _, rcookie := range resp.Cookies() {
+					respCookies[rcookie.Name] = rcookie.Value
+				}
+
+				return &Response{headers: respHeaders, cookies: respCookies, raw: rawData, url: requestURI}, nil
+			}
+		}
+	}
+}
+
+func (r *Request) newRequest(method, url_ string, params map[string]string, data string) (*http.Request, error) {
+	method = strings.ToUpper(method)
 
 	if u, err := url.Parse(url_); err != nil {
 		return nil, err
 	} else {
-		if len(params_) != 0 {
+		if len(params) != 0 {
 			q := u.Query()
-			for k, v := range params_ {
+			for k, v := range params {
 				q.Add(k, v)
 			}
 			u.RawQuery = q.Encode()
 		}
 
-		if rawReq, err := http.NewRequest(method_, u.String(), strings.NewReader(data_)); err != nil {
+		if rawReq, err := http.NewRequest(method, u.String(), strings.NewReader(data)); err != nil {
 			return nil, err
 		} else {
 			header := http.Header{}
@@ -345,94 +405,48 @@ func (r *Request) exec(method_, url_ string, params_ map[string]string, data_ st
 				}
 			}
 
-			// if (method_ == "POST" || method_ == "PUT") && len(data_) > 0 {
-			// 	rawReq.Body = io.NopCloser(strings.NewReader(data_))
-			// }
-
 			r.c.Timeout = time.Duration(r.timeout) * time.Second
 
-			if enableLog {
-				ls := make([]string, 0)
-
-				ls = append(ls, fmt.Sprintf("%s %s HTTP1.1", rawReq.Method, rawReq.URL))
-				for hn, hv := range rawReq.Header {
-					for _, hv0 := range hv {
-						ls = append(ls, fmt.Sprintf(">> %s: %s", hn, hv0))
-					}
-				}
-				if rawReq.Body != nil {
-					ls = append(ls, "")
-					if len(data_) > 512 {
-						ls = append(ls, fmt.Sprintf(">> (%d bytes) %s...", len(data_), data_[0:512]))
-					} else {
-						ls = append(ls, fmt.Sprintf(">> (%d bytes) %s", len(data_), data_))
-					}
-				}
-
-				fmt.Printf("%s\n", strings.Join(ls, "\n"))
-			}
-
-			t0 := time.Now()
-			if resp, err := r.c.Do(rawReq); err != nil {
-				ue := err.(*url.Error)
-				var statusCode int
-				if ue.Timeout() {
-					statusCode = 0
-				} else {
-					statusCode = -1
-				}
-				return nil, &requestError{Op: ue.Op, URL: ue.URL, Err: ue.Err, StatusCode: statusCode}
-			} else {
-				t1 := time.Now()
-				defer resp.Body.Close()
-
-				if enableLog {
-					ls := make([]string, 0)
-
-					ls = append(ls, fmt.Sprintf("%.3f seconds", t1.Sub(t0).Seconds()))
-					ls = append(ls, fmt.Sprintf("<< %s", resp.Status))
-					for hn, hv := range resp.Header {
-						for _, hv0 := range hv {
-							ls = append(ls, fmt.Sprintf("<< %s: %s", hn, hv0))
-						}
-					}
-					if resp.Body != nil {
-						ls = append(ls, "")
-						ls = append(ls, "<< (data)")
-					}
-
-					fmt.Printf("%s\n", strings.Join(ls, "\n"))
-				}
-
-				// 如果服务器响应了一个HTML页面，那么将请求地址记录到之前的HTML地址。
-				if resp.StatusCode == http.StatusOK && strings.HasPrefix(resp.Header.Get("content-type"), "text/html") {
-					r.preHtmlUrl = u.String()
-				}
-
-				// TODO: 此处按照HTTP头部获取charset。
-				if rawData, err := ioutil.ReadAll(resp.Body); err != nil {
-					return nil, &requestError{Op: method_, URL: u.String(), Err: err, StatusCode: resp.StatusCode}
-				} else {
-					if resp.StatusCode >= 300 {
-						return nil, &requestError{Op: method_, URL: u.String(), Raw: rawData, StatusCode: resp.StatusCode}
-					}
-
-					respHeaders := make(map[string]string)
-					respCookies := make(map[string]string)
-
-					for rHeaderName, rHeaderValues := range resp.Header {
-						if len(rHeaderValues) > 0 {
-							respHeaders[rHeaderName] = strings.Join(rHeaderValues, ",")
-						}
-					}
-
-					for _, rcookie := range resp.Cookies() {
-						respCookies[rcookie.Name] = rcookie.Value
-					}
-
-					return &Response{headers: respHeaders, cookies: respCookies, raw: rawData, url: resp.Request.URL}, nil
-				}
-			}
+			return rawReq, nil
 		}
 	}
+}
+
+func (r *Request) logReq(req *http.Request, data string) {
+	ls := make([]string, 0)
+
+	ls = append(ls, fmt.Sprintf("%s %s HTTP1.1", req.Method, req.URL))
+	for hn, hv := range req.Header {
+		for _, hv0 := range hv {
+			ls = append(ls, fmt.Sprintf(">> %s: %s", hn, hv0))
+		}
+	}
+	if req.Body != nil {
+		ls = append(ls, "")
+		if len(data) > 512 {
+			ls = append(ls, fmt.Sprintf(">> (%d bytes) %s...", len(data), data[0:512]))
+		} else {
+			ls = append(ls, fmt.Sprintf(">> (%d bytes) %s", len(data), data))
+		}
+	}
+
+	fmt.Printf("%s\n", strings.Join(ls, "\n"))
+}
+
+func (r *Request) logResp(t0, t1 time.Time, resp *http.Response) {
+	ls := make([]string, 0)
+
+	ls = append(ls, fmt.Sprintf("%.3f seconds", t1.Sub(t0).Seconds()))
+	ls = append(ls, fmt.Sprintf("<< %s", resp.Status))
+	for hn, hv := range resp.Header {
+		for _, hv0 := range hv {
+			ls = append(ls, fmt.Sprintf("<< %s: %s", hn, hv0))
+		}
+	}
+	if resp.Body != nil {
+		ls = append(ls, "")
+		ls = append(ls, "<< (data)")
+	}
+
+	fmt.Printf("%s\n", strings.Join(ls, "\n"))
 }

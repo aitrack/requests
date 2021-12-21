@@ -1,7 +1,6 @@
 package requests
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -27,5 +26,10 @@ func TestRedirect(t *testing.T) {
 		panic(err)
 	}
 
-	fmt.Printf("%s\n", resp.URL())
+	u1 := resp.URL()
+	r1 := "https://track.dpd.co.uk/parcels/15501275614138*19647"
+
+	if u1 != r1 {
+		t.Errorf("expected %s, but %s got\n", r1, u1)
+	}
 }

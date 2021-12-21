@@ -165,6 +165,11 @@ func Run(w http.ResponseWriter, r *http.Request) {
 		parallel++
 	}
 
+	ordersPerReq = len(trackingNoList) / parallel
+	if len(trackingNoList)%parallel != 0 {
+		ordersPerReq++
+	}
+
 	result := make([]*TrackingItem, 0)
 	resultLocker := sync.Mutex{}
 
@@ -179,8 +184,9 @@ func Run(w http.ResponseWriter, r *http.Request) {
 		if totalCount%agent.MaxOrdersPerPage != 0 {
 			batchCount++
 		}
+
 		for j := 0; j < batchCount; j++ {
-			p0 := j * batchCount
+			p0 := j * agent.MaxOrdersPerPage
 			p1 := p0 + agent.MaxOrdersPerPage
 			if p1 > totalCount {
 				p1 = totalCount
@@ -239,7 +245,7 @@ func Run(w http.ResponseWriter, r *http.Request) {
 			req := &Request{flagCache: false, flagReferrer: true}
 			req.reset()
 
-			p0 := i * parallel
+			p0 := i * ordersPerReq
 			p1 := p0 + ordersPerReq
 			if p1 > len(trackingNoList) {
 				p1 = len(trackingNoList)
