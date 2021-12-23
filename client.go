@@ -32,13 +32,13 @@ type Response struct {
 	url     string
 }
 
-type parseError struct {
+type ParseError struct {
 	TargetFmt string // 期望的目标格式。
 	Err       error  // 源错误。
 	Raw       string // 源内容。
 }
 
-func (e *parseError) Error() string {
+func (e *ParseError) Error() string {
 	return fmt.Sprintf("cannot parse as %s, cause=%v, raw=%v", e.TargetFmt, e.Err, e.Raw)
 }
 
@@ -48,7 +48,7 @@ func (e *parseError) Error() string {
 func (rr *Response) AsJson() map[string]interface{} {
 	result := make(map[string]interface{})
 	if err := json.Unmarshal(rr.raw, &result); err != nil {
-		panic(&parseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
+		panic(&ParseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
 	} else {
 		return result
 	}
@@ -59,7 +59,7 @@ func (rr *Response) AsJson() map[string]interface{} {
 // result 待解析的结果。
 func (rr *Response) Scan(result interface{}) {
 	if err := json.Unmarshal(rr.raw, result); err != nil {
-		panic(&parseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
+		panic(&ParseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
 	}
 }
 
@@ -69,7 +69,7 @@ func (rr *Response) Scan(result interface{}) {
 func (rr *Response) AsJsonArray() []map[string]interface{} {
 	result := make([]map[string]interface{}, 0)
 	if err := json.Unmarshal(rr.raw, &result); err != nil {
-		panic(&parseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
+		panic(&ParseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
 	} else {
 		return result
 	}
@@ -89,7 +89,7 @@ func (rr *Response) AsString() string {
 // 返回path指定的节点对象，如果path是空字符串，那么返回`document`节点对象。
 func (rr *Response) AsHtml(path string) *html.Node {
 	if doc, err := htmlquery.Parse(bytes.NewBuffer(rr.raw)); err != nil {
-		panic(&parseError{TargetFmt: "html", Err: err, Raw: string(rr.raw)})
+		panic(&ParseError{TargetFmt: "html", Err: err, Raw: string(rr.raw)})
 	} else {
 		if path == "" {
 			return doc
@@ -152,7 +152,7 @@ type Request struct {
 
 func NewRequest() *Request {
 	jar, _ := cookiejar.New(nil)
-	result := Request{c: &http.Client{Transport: ignoreCertTransport, Jar: jar}}
+	result := Request{c: &http.Client{Transport: ignoreCertTransport, Jar: jar}, flagCache: false, flagReferrer: true}
 	result.reset()
 
 	return &result
@@ -272,7 +272,7 @@ func makeJson(data_ interface{}) string {
 	}
 }
 
-type requestError struct {
+type HttpError struct {
 	Op         string // HTTP 方法。
 	URL        string // 目标URL。
 	Raw        []byte // 原始响应内容。
@@ -280,7 +280,7 @@ type requestError struct {
 	StatusCode int    // 原始响应码。
 }
 
-func (e *requestError) Error() string {
+func (e *HttpError) Error() string {
 	var result string
 	if e.StatusCode > 0 {
 		result = fmt.Sprintf("%s %s (%d)", e.Op, e.URL, e.StatusCode)
@@ -293,11 +293,11 @@ func (e *requestError) Error() string {
 	return result
 }
 
-func (e *requestError) Timeout() bool {
+func (e *HttpError) Timeout() bool {
 	return e.StatusCode == 0
 }
 
-func (e *requestError) CannotConn() bool {
+func (e *HttpError) CannotConn() bool {
 	return e.StatusCode < 0
 }
 
@@ -320,7 +320,7 @@ func (r *Request) exec(method, url_ string, params map[string]string, data strin
 			} else {
 				statusCode = -1
 			}
-			return nil, &requestError{Op: ue.Op, URL: ue.URL, Err: ue.Err, StatusCode: statusCode}
+			return nil, &HttpError{Op: ue.Op, URL: ue.URL, Err: ue.Err, StatusCode: statusCode}
 		} else {
 			t1 := time.Now()
 			defer resp.Body.Close()
@@ -338,10 +338,10 @@ func (r *Request) exec(method, url_ string, params map[string]string, data strin
 
 			// TODO: 此处按照HTTP头部获取charset。
 			if rawData, err := ioutil.ReadAll(resp.Body); err != nil {
-				return nil, &requestError{Op: method, URL: requestURI, Err: err, StatusCode: resp.StatusCode}
+				return nil, &HttpError{Op: method, URL: requestURI, Err: err, StatusCode: resp.StatusCode}
 			} else {
 				if resp.StatusCode >= 300 {
-					return nil, &requestError{Op: method, URL: requestURI, Raw: rawData, StatusCode: resp.StatusCode}
+					return nil, &HttpError{Op: method, URL: requestURI, Raw: rawData, StatusCode: resp.StatusCode}
 				}
 
 				respHeaders := make(map[string]string)
