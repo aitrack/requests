@@ -266,7 +266,7 @@ func makeUrlEncoded(data_ map[string]interface{}) string {
 				rv.Add(k, strconv.Itoa(lvv))
 			}
 		} else {
-			rv.Add(k, fmt.Sprintf("%T", v))
+			rv.Add(k, fmt.Sprintf("%v", v))
 		}
 	}
 
