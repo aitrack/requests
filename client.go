@@ -229,7 +229,7 @@ func (r *Request) Get(url string, params map[string]string) (*Response, error) {
 	return r.exec("GET", url, params, "")
 }
 
-func (r *Request) Post(url string, params map[string]string, data_ map[string]string) (*Response, error) {
+func (r *Request) Post(url string, params map[string]string, data_ map[string]interface{}) (*Response, error) {
 	r.Header("content-type", "application/x-www-form-urlencoded")
 	return r.exec("POST", url, params, makeUrlEncoded(data_))
 }
@@ -239,16 +239,16 @@ func (r *Request) PostJson(url string, params map[string]string, data_ interface
 	return r.exec("POST", url, params, makeJson(data_))
 }
 
-func (r *Request) Put(url string, params map[string]string, data_ map[string]string) (*Response, error) {
+func (r *Request) Put(url string, params map[string]string, data_ map[string]interface{}) (*Response, error) {
 	r.Header("content-type", "application/x-www-form-urlencoded")
 	return r.exec("POST", url, params, makeUrlEncoded(data_))
 }
 
-func (r *Request) PutJson(url string, params map[string]string, data_ map[string]string) (*Response, error) {
+func (r *Request) PutJson(url string, params map[string]string, data_ map[string]interface{}) (*Response, error) {
 	return r.exec("POST", url, params, makeJson(data_))
 }
 
-func makeUrlEncoded(data_ map[string]string) string {
+func makeUrlEncoded(data_ map[string]interface{}) string {
 	if len(data_) == 0 {
 		return ""
 	}
@@ -256,7 +256,13 @@ func makeUrlEncoded(data_ map[string]string) string {
 	rv := url.Values{}
 
 	for k, v := range data_ {
-		rv.Add(k, v)
+		if lv, ok := v.([]interface{}); ok {
+			for _, lvv := range lv {
+				rv.Add(k, fmt.Sprintf("%T", lvv))
+			}
+		} else {
+			rv.Add(k, fmt.Sprintf("%T", v))
+		}
 	}
 
 	return rv.Encode()
