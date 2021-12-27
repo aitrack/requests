@@ -432,6 +432,9 @@ func (r *Request) logReq(req *http.Request, data string) {
 			ls = append(ls, fmt.Sprintf(">> %s: %s", hn, hv0))
 		}
 	}
+	for _, cc := range r.c.Jar.Cookies(req.URL) {
+		ls = append(ls, fmt.Sprintf(">> Set-Cookie: %s=%s\n", cc.Name, cc.Value))
+	}
 	if req.Body != nil {
 		ls = append(ls, "")
 		if len(data) > 512 {

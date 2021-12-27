@@ -5,6 +5,8 @@ import (
 )
 
 func TestRedirect(t *testing.T) {
+	EnableLog()
+
 	r := NewRequest()
 
 	resp, err := r.Header("Connection", "keep-alive").
