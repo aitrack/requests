@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -256,9 +257,13 @@ func makeUrlEncoded(data_ map[string]interface{}) string {
 	rv := url.Values{}
 
 	for k, v := range data_ {
-		if lv, ok := v.([]interface{}); ok {
+		if lv, ok := v.([]string); ok {
 			for _, lvv := range lv {
-				rv.Add(k, fmt.Sprintf("%T", lvv))
+				rv.Add(k, lvv)
+			}
+		} else if lv, ok := v.([]int); ok {
+			for _, lvv := range lv {
+				rv.Add(k, strconv.Itoa(lvv))
 			}
 		} else {
 			rv.Add(k, fmt.Sprintf("%T", v))
