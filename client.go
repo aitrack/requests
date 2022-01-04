@@ -124,8 +124,28 @@ func (rr *Response) Header(name string) string {
 	return rr.headers[name]
 }
 
+var (
+	proxyMap = make(map[string]*url.URL)
+)
+
+// RegisterProxy 注册代理。
+// host 需要使用代理的`HOST`。
+// proxy 代理对应的`URL`。
+func RegisterProxy(host string, proxy *url.URL) {
+	proxyMap[host] = proxy
+}
+
 var ignoreCertTransport = &http.Transport{
-	Proxy: http.ProxyFromEnvironment,
+	Proxy: func(rr *http.Request) (*url.URL, error) {
+		if pu := proxyMap[strings.ToLower(rr.Host)]; pu != nil {
+			if enableLog {
+				fmt.Printf("Use proxy %s for %s\n", pu, rr.URL)
+			}
+			return pu, nil
+		} else {
+			return http.ProxyFromEnvironment(rr)
+		}
+	},
 	DialContext: (&net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
