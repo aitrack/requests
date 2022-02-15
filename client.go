@@ -162,6 +162,7 @@ type Request struct {
 	c *http.Client
 
 	timeout      int               // 超时时间。
+	UserAgent    string            // User-Agent 头。
 	accept       string            // 允许服务器返回的内容类型。
 	flagCache    bool              // 是否允许服务器发送缓存
 	flagReferrer bool              // 是否自动将前一个返回HTML的请求页面作为referer。
@@ -413,7 +414,11 @@ func (r *Request) newRequest(method, url_ string, params map[string]string, data
 		} else {
 			header := http.Header{}
 			// 加入默认头部。
-			header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Safari/537.36")
+			if r.UserAgent == "" {
+				header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.54 Safari/537.36")
+			} else {
+				header.Set("user-agent", r.UserAgent)
+			}
 			if !r.flagCache {
 				header.Set("pragma", "no-cache")
 				header.Set("cache-control", "no-cache")
