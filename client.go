@@ -110,11 +110,16 @@ func (rr *Response) URL() string {
 	return rr.url
 }
 
-// Header 获取逗号分隔的Header头信息。
-// name HTTP Header 的名字。
-// 返回头信息，如果不存在则返回空字符串，**如果存在多个则返回最后一个**。
+// Cookie 获取指定的Cookie内容。
+// name Cookie 的名字。
+// 返回Cookie信息，如果不存在则返回空字符串，**如果存在多个则返回最后一个**。
 func (rr *Response) Cookie(name string) string {
 	return rr.cookies[name]
+}
+
+// AllCookies 获取所有的Cookie信息。
+func (rr *Response) AllCookies() map[string]string {
+	return rr.cookies
 }
 
 // Header 获取逗号分隔的Header头信息。
