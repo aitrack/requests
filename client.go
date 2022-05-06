@@ -266,6 +266,11 @@ func (r *Request) PostJson(url string, params map[string]string, data_ interface
 	return r.exec("POST", url, params, makeJson(data_))
 }
 
+func (r *Request) PostCustom(url string, contentType string, params map[string]string, data_ interface{}) (*Response, error) {
+	r.Header("content-type", contentType)
+	return r.exec("POST", url, params, makeJson(data_))
+}
+
 func (r *Request) Put(url string, params map[string]string, data_ map[string]interface{}) (*Response, error) {
 	r.Header("content-type", "application/x-www-form-urlencoded")
 	return r.exec("POST", url, params, makeUrlEncoded(data_))
