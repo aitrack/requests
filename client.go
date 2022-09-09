@@ -177,9 +177,30 @@ type Request struct {
 	preHtmlUrl string
 }
 
-func NewRequest() *Request {
+func NewRequest(proxy *url.URL) *Request {
 	jar, _ := cookiejar.New(nil)
-	result := Request{c: &http.Client{Transport: ignoreCertTransport, Jar: jar}, flagCache: false, flagReferrer: true}
+	result := Request{
+		c: &http.Client{
+			Transport: &http.Transport{
+				Proxy: func(rr *http.Request) (*url.URL, error) {
+					return proxy, nil
+				},
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				ForceAttemptHTTP2:     true,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+				TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+			},
+			Jar: jar,
+		},
+		flagCache:    false,
+		flagReferrer: true,
+	}
 	result.reset()
 
 	return &result
