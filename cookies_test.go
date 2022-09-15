@@ -43,7 +43,7 @@ func TestCookies(t *testing.T) {
 
 	csrf := csrfSlice[1]
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"prefix":    []string{"988", "988", "988", "988", "988"},
 		"awbNumber": []string{"42819486", "", "", "", ""},
 		"_csrf":     csrf,

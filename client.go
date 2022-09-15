@@ -46,8 +46,8 @@ func (e *ParseError) Error() string {
 // AsJson 将结果解析为JSON对象。
 // 如果解析失败则触发`panic`。
 // 返回JSON对象。
-func (rr *Response) AsJson() map[string]interface{} {
-	result := make(map[string]interface{})
+func (rr *Response) AsJson() map[string]any {
+	result := make(map[string]any)
 	if err := json.Unmarshal(rr.raw, &result); err != nil {
 		panic(&ParseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
 	} else {
@@ -58,7 +58,7 @@ func (rr *Response) AsJson() map[string]interface{} {
 // Scan 将结果解析为JSON对象。
 // 如果解析失败则触发`panic`。
 // result 待解析的结果。
-func (rr *Response) Scan(result interface{}) {
+func (rr *Response) Scan(result any) {
 	if err := json.Unmarshal(rr.raw, result); err != nil {
 		panic(&ParseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
 	}
@@ -67,8 +67,8 @@ func (rr *Response) Scan(result interface{}) {
 // AsJsonArray 将结果解析为列表形式的JSON对象。
 // 如果解析失败则触发`panic`。
 // 返回列表形式的对象。
-func (rr *Response) AsJsonArray() []map[string]interface{} {
-	result := make([]map[string]interface{}, 0)
+func (rr *Response) AsJsonArray() []map[string]any {
+	result := make([]map[string]any, 0)
 	if err := json.Unmarshal(rr.raw, &result); err != nil {
 		panic(&ParseError{TargetFmt: "json", Err: err, Raw: string(rr.raw)})
 	} else {
@@ -129,39 +129,39 @@ func (rr *Response) Header(name string) string {
 	return rr.headers[name]
 }
 
-var (
-	proxyMap = make(map[string]*url.URL)
-)
+// var (
+// 	proxyMap = make(map[string]*url.URL)
+// )
 
-// RegisterProxy 注册代理。
-// host 需要使用代理的`HOST`。
-// proxy 代理对应的`URL`。
-func RegisterProxy(host string, proxy *url.URL) {
-	proxyMap[host] = proxy
-}
+// // RegisterProxy 注册代理。
+// // host 需要使用代理的`HOST`。
+// // proxy 代理对应的`URL`。
+// func RegisterProxy(host string, proxy *url.URL) {
+// 	proxyMap[host] = proxy
+// }
 
-var ignoreCertTransport = &http.Transport{
-	Proxy: func(rr *http.Request) (*url.URL, error) {
-		if pu := proxyMap[strings.ToLower(rr.Host)]; pu != nil {
-			if enableLog {
-				fmt.Printf("Use proxy %s for %s\n", pu, rr.URL)
-			}
-			return pu, nil
-		} else {
-			return http.ProxyFromEnvironment(rr)
-		}
-	},
-	DialContext: (&net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}).DialContext,
-	ForceAttemptHTTP2:     true,
-	MaxIdleConns:          100,
-	IdleConnTimeout:       90 * time.Second,
-	TLSHandshakeTimeout:   10 * time.Second,
-	ExpectContinueTimeout: 1 * time.Second,
-	TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-}
+// var ignoreCertTransport = &http.Transport{
+// 	Proxy: func(rr *http.Request) (*url.URL, error) {
+// 		if pu := proxyMap[strings.ToLower(rr.Host)]; pu != nil {
+// 			if enableLog {
+// 				fmt.Printf("Use proxy %s for %s\n", pu, rr.URL)
+// 			}
+// 			return pu, nil
+// 		} else {
+// 			return http.ProxyFromEnvironment(rr)
+// 		}
+// 	},
+// 	DialContext: (&net.Dialer{
+// 		Timeout:   30 * time.Second,
+// 		KeepAlive: 30 * time.Second,
+// 	}).DialContext,
+// 	ForceAttemptHTTP2:     true,
+// 	MaxIdleConns:          100,
+// 	IdleConnTimeout:       90 * time.Second,
+// 	TLSHandshakeTimeout:   10 * time.Second,
+// 	ExpectContinueTimeout: 1 * time.Second,
+// 	TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+// }
 
 type Request struct {
 	c *http.Client
@@ -277,31 +277,31 @@ func (r *Request) Get(url string, params map[string]string) (*Response, error) {
 	return r.exec("GET", url, params, "")
 }
 
-func (r *Request) Post(url string, params map[string]string, data_ map[string]interface{}) (*Response, error) {
+func (r *Request) Post(url string, params map[string]string, data_ map[string]any) (*Response, error) {
 	r.Header("content-type", "application/x-www-form-urlencoded")
 	return r.exec("POST", url, params, makeUrlEncoded(data_))
 }
 
-func (r *Request) PostJson(url string, params map[string]string, data_ interface{}) (*Response, error) {
+func (r *Request) PostJson(url string, params map[string]string, data_ any) (*Response, error) {
 	r.Header("content-type", "application/json")
 	return r.exec("POST", url, params, makeJson(data_))
 }
 
-func (r *Request) PostCustom(url string, contentType string, params map[string]string, data_ interface{}) (*Response, error) {
+func (r *Request) PostCustom(url string, contentType string, params map[string]string, data_ any) (*Response, error) {
 	r.Header("content-type", contentType)
 	return r.exec("POST", url, params, makeJson(data_))
 }
 
-func (r *Request) Put(url string, params map[string]string, data_ map[string]interface{}) (*Response, error) {
+func (r *Request) Put(url string, params map[string]string, data_ map[string]any) (*Response, error) {
 	r.Header("content-type", "application/x-www-form-urlencoded")
 	return r.exec("POST", url, params, makeUrlEncoded(data_))
 }
 
-func (r *Request) PutJson(url string, params map[string]string, data_ map[string]interface{}) (*Response, error) {
+func (r *Request) PutJson(url string, params map[string]string, data_ map[string]any) (*Response, error) {
 	return r.exec("POST", url, params, makeJson(data_))
 }
 
-func makeUrlEncoded(data_ map[string]interface{}) string {
+func makeUrlEncoded(data_ map[string]any) string {
 	if len(data_) == 0 {
 		return ""
 	}
@@ -325,7 +325,7 @@ func makeUrlEncoded(data_ map[string]interface{}) string {
 	return rv.Encode()
 }
 
-func makeJson(data_ interface{}) string {
+func makeJson(data_ any) string {
 	if rs, ok := data_.(string); ok {
 		return rs
 	} else if b, err := json.Marshal(data_); err != nil {
