@@ -301,6 +301,27 @@ func (r *Request) PutJson(url string, params map[string]string, data_ map[string
 	return r.exec("POST", url, params, makeJson(data_))
 }
 
+func (r *Request) Auto(method, url string, params map[string]string, data_ map[string]any, isJson bool) (*Response, error) {
+	method = strings.ToUpper(method)
+	switch method {
+	case "GET":
+		return r.Get(url, params)
+	case "POST":
+		if isJson {
+			return r.PostJson(url, params, data_)
+		} else {
+			return r.Post(url, params, data_)
+		}
+	case "PUT":
+		if isJson {
+			return r.PutJson(url, params, data_)
+		} else {
+			return r.Put(url, params, data_)
+		}
+	}
+	return nil, fmt.Errorf("unsupported method %s", method)
+}
+
 func makeUrlEncoded(data_ map[string]any) string {
 	if len(data_) == 0 {
 		return ""
