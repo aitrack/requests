@@ -7,7 +7,7 @@ import (
 func TestRedirect(t *testing.T) {
 	EnableLog()
 
-	r := NewRequest()
+	r := NewRequest(nil)
 
 	resp, err := r.Header("Connection", "keep-alive").
 		Header("sec-ch-ua", "\"Google Chrome\";v=\"95\", \"Chromium\";v=\"95\", \";Not A Brand\";v=\"99\"").

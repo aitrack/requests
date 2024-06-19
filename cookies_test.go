@@ -9,7 +9,7 @@ import (
 func TestCookies(t *testing.T) {
 	EnableLog()
 
-	r := NewRequest()
+	r := NewRequest(nil)
 
 	var resp *Response
 	var err error

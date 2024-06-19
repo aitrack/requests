@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	enableLog bool = false
+	enableLog = false
 )
 
 func EnableLog() {
@@ -129,40 +129,6 @@ func (rr *Response) Header(name string) string {
 	return rr.headers[name]
 }
 
-// var (
-// 	proxyMap = make(map[string]*url.URL)
-// )
-
-// // RegisterProxy 注册代理。
-// // host 需要使用代理的`HOST`。
-// // proxy 代理对应的`URL`。
-// func RegisterProxy(host string, proxy *url.URL) {
-// 	proxyMap[host] = proxy
-// }
-
-// var ignoreCertTransport = &http.Transport{
-// 	Proxy: func(rr *http.Request) (*url.URL, error) {
-// 		if pu := proxyMap[strings.ToLower(rr.Host)]; pu != nil {
-// 			if enableLog {
-// 				fmt.Printf("Use proxy %s for %s\n", pu, rr.URL)
-// 			}
-// 			return pu, nil
-// 		} else {
-// 			return http.ProxyFromEnvironment(rr)
-// 		}
-// 	},
-// 	DialContext: (&net.Dialer{
-// 		Timeout:   30 * time.Second,
-// 		KeepAlive: 30 * time.Second,
-// 	}).DialContext,
-// 	ForceAttemptHTTP2:     true,
-// 	MaxIdleConns:          100,
-// 	IdleConnTimeout:       90 * time.Second,
-// 	TLSHandshakeTimeout:   10 * time.Second,
-// 	ExpectContinueTimeout: 1 * time.Second,
-// 	TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-// }
-
 type Request struct {
 	c *http.Client
 
@@ -206,6 +172,9 @@ func NewRequest(proxy *url.URL) *Request {
 	return &result
 }
 
+func (r *Request) Client() *http.Client {
+	return r.c
+}
 func (r *Request) reset() *Request {
 	r.timeout = 15
 	r.flagReferrer = true
