@@ -270,23 +270,26 @@ func (r *Request) PutJson(url string, params map[string]string, data_ map[string
 	return r.exec("POST", url, params, makeJson(data_))
 }
 
-func (r *Request) Auto(method, url string, params map[string]string, data_ map[string]any, isJson bool) (*Response, error) {
+func (r *Request) Auto(method, url string, params map[string]string, data_ any, isJson bool) (*Response, error) {
 	method = strings.ToUpper(method)
 	switch method {
 	case "GET":
 		return r.Get(url, params)
 	case "POST":
-		if isJson {
-			return r.PostJson(url, params, data_)
+		if d, ok := data_.(map[string]any); ok {
+			return r.Post(url, params, d)
 		} else {
-			return r.Post(url, params, data_)
+			return r.PostJson(url, params, data_)
 		}
 	case "PUT":
-		if isJson {
-			return r.PutJson(url, params, data_)
-		} else {
-			return r.Put(url, params, data_)
+		if d, ok := data_.(map[string]any); ok {
+			if isJson {
+				return r.PutJson(url, params, d)
+			} else {
+				return r.Put(url, params, d)
+			}
 		}
+
 	}
 	return nil, fmt.Errorf("unsupported method %s", method)
 }
