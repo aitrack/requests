@@ -276,10 +276,10 @@ func (r *Request) Auto(method, url string, params map[string]string, data_ any, 
 	case "GET":
 		return r.Get(url, params)
 	case "POST":
-		if d, ok := data_.(map[string]any); ok {
-			return r.Post(url, params, d)
-		} else {
+		if isJson {
 			return r.PostJson(url, params, data_)
+		} else if d, ok := data_.(map[string]any); ok {
+			return r.Post(url, params, d)
 		}
 	case "PUT":
 		if d, ok := data_.(map[string]any); ok {
