@@ -140,6 +140,9 @@ type Request struct {
 	headers      map[string]string // HTTP头部信息。
 	cookies      map[string]string // Cookie信息。
 
+	BasicAuthUsername string // BasicAuth用户名
+	BasicAuthPassword string // BasicAuth密码
+
 	preHtmlUrl string
 }
 
@@ -226,6 +229,12 @@ func (r *Request) Header(name, value string) *Request {
 		r.headers[name] = value
 	}
 
+	return r
+}
+
+func (r *Request) SetBasicAuth(username, password string) *Request {
+	r.BasicAuthUsername = strings.TrimSpace(username)
+	r.BasicAuthPassword = strings.TrimSpace(password)
 	return r
 }
 
@@ -463,6 +472,10 @@ func (r *Request) newRequest(method, url_ string, params map[string]string, data
 				for cookieName, cookieValue := range r.cookies {
 					rawReq.AddCookie(&http.Cookie{Name: cookieName, Value: cookieValue})
 				}
+			}
+
+			if r.BasicAuthUsername != "" && r.BasicAuthPassword != "" {
+				rawReq.SetBasicAuth(r.BasicAuthUsername, r.BasicAuthPassword)
 			}
 
 			r.c.Timeout = time.Duration(r.timeout) * time.Second
