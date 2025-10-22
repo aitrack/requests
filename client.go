@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -16,6 +17,15 @@ import (
 
 	"github.com/antchfx/htmlquery"
 	"golang.org/x/net/html"
+)
+
+const (
+	NONE     = "none"
+	JSON     = "json"
+	XML      = "xml"
+	WWWFORM  = "www-form"
+	FROMDATA = "form-data"
+	BINARY   = "binary"
 )
 
 var (
@@ -279,24 +289,46 @@ func (r *Request) PutJson(url string, params map[string]string, data_ map[string
 	return r.exec("POST", url, params, makeJson(data_))
 }
 
-func (r *Request) Auto(method, url string, params map[string]string, data_ any, isJson bool) (*Response, error) {
+func (r *Request) PostXml(url string, params map[string]string, data_ any) (*Response, error) {
+	r.Header("content-type", "application/xml")
+	return r.exec("POST", url, params, makeXml(data_))
+}
+
+func (r *Request) PutXml(url string, params map[string]string, data_ any) (*Response, error) {
+	return r.exec("POST", url, params, makeXml(data_))
+}
+
+func (r *Request) Auto(method, url string, params map[string]string, data_ any, dataType string) (*Response, error) {
 	method = strings.ToUpper(method)
 	switch method {
 	case "GET":
 		return r.Get(url, params)
 	case "POST":
-		if isJson {
+		switch dataType {
+		case JSON:
 			return r.PostJson(url, params, data_)
-		} else if d, ok := data_.(map[string]any); ok {
-			return r.Post(url, params, d)
+		case XML:
+			return r.PostXml(url, params, data_)
+		case WWWFORM:
+			if d, ok := data_.(map[string]any); ok {
+				return r.Post(url, params, d)
+			}
+		default:
+			return r.exec("POST", url, params, "")
 		}
 	case "PUT":
 		if d, ok := data_.(map[string]any); ok {
-			if isJson {
+			switch dataType {
+			case JSON:
 				return r.PutJson(url, params, d)
-			} else {
-				return r.Put(url, params, d)
+			case XML:
+				return r.PutXml(url, params, data_)
+			case WWWFORM:
+				return r.PutXml(url, params, d)
+			default:
+				return r.exec("POST", url, params, "")
 			}
+
 		}
 
 	}
@@ -331,6 +363,16 @@ func makeJson(data_ any) string {
 	if rs, ok := data_.(string); ok {
 		return rs
 	} else if b, err := json.Marshal(data_); err != nil {
+		return ""
+	} else {
+		return string(b)
+	}
+}
+
+func makeXml(data_ any) string {
+	if rs, ok := data_.(string); ok {
+		return rs
+	} else if b, err := xml.Marshal(data_); err != nil {
 		return ""
 	} else {
 		return string(b)
